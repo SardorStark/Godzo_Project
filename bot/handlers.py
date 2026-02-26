@@ -6,9 +6,16 @@ from collections.abc import Sequence
 
 from aiogram import F, Dispatcher, Router
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from bot.keyboards import build_subscription_keyboard
+from bot.keyboards import (
+    build_contact_request_keyboard,
+    build_remove_keyboard,
+    build_subscription_keyboard,
+)
+from bot.storage import UserRegistration, is_registered, save_registration
 from bot.subscription import SubscriptionCheckError, is_subscribed
 
 WELCOME_TEXT = "Obuna tasdiqlandi, xush kelibsiz!"
@@ -18,6 +25,17 @@ SUBSCRIPTION_REQUIRED_TEXT = (
 SUBSCRIPTION_NOT_DONE_TEXT = "Hali barcha kanallarga obuna bolinmagan."
 CHECK_ERROR_TEXT = "Tekshiruvda muammo, keyinroq urinib koring."
 DEFAULT_SUBSCRIBED_TEXT = "Siz obuna bolgansiz. Hozircha /start dan foydalaning."
+ASK_CONTACT_TEXT = "Davom etish uchun telefon raqamingizni yuboring."
+ASK_NAME_TEXT = "Endi ism-familiyangizni yozing."
+CONTACT_INVALID_TEXT = "Telefon raqamni tugma orqali yuboring."
+NAME_INVALID_TEXT = "Ism juda qisqa. Qaytadan kiriting."
+REGISTERED_TEXT = "Malumot qabul qilindi."
+ALREADY_REGISTERED_TEXT = "Siz oldin malumot topshirgansiz."
+
+
+class RegistrationState(StatesGroup):
+    waiting_contact = State()
+    waiting_name = State()
 
 
 def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[str]) -> None:
@@ -44,18 +62,34 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[str]) -> Non
             await message.answer(CHECK_ERROR_TEXT)
             return None
 
-    @router.message(CommandStart())
-    async def start_handler(message: Message) -> None:
+    async def continue_after_registration(message: Message, state: FSMContext) -> None:
         result = await check_user(message)
         if result is None:
             return
 
         is_user_subscribed, missing_chats = result
         if is_user_subscribed:
-            await message.answer(WELCOME_TEXT)
+            await state.clear()
+            await message.answer(WELCOME_TEXT, reply_markup=build_remove_keyboard())
             return
 
         await send_subscription_prompt(message, missing_chats)
+
+    @router.message(CommandStart())
+    async def start_handler(message: Message, state: FSMContext) -> None:
+        if message.from_user is None:
+            return
+
+        if await is_registered(message.from_user.id):
+            await message.answer(ALREADY_REGISTERED_TEXT, reply_markup=build_remove_keyboard())
+            await continue_after_registration(message, state)
+            return
+
+        await state.set_state(RegistrationState.waiting_contact)
+        await message.answer(
+            ASK_CONTACT_TEXT,
+            reply_markup=build_contact_request_keyboard(),
+        )
 
     @router.callback_query(F.data == "check_subs")
     async def check_subs_handler(callback: CallbackQuery) -> None:
@@ -84,8 +118,59 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[str]) -> Non
         )
         await callback.answer(SUBSCRIPTION_NOT_DONE_TEXT)
 
+    @router.message(RegistrationState.waiting_contact, F.contact)
+    async def contact_handler(message: Message, state: FSMContext) -> None:
+        if message.contact is None:
+            return
+        await state.update_data(phone_number=message.contact.phone_number)
+        await state.set_state(RegistrationState.waiting_name)
+        await message.answer(ASK_NAME_TEXT, reply_markup=build_remove_keyboard())
+
+    @router.message(RegistrationState.waiting_contact)
+    async def contact_invalid_handler(message: Message) -> None:
+        await message.answer(CONTACT_INVALID_TEXT, reply_markup=build_contact_request_keyboard())
+
+    @router.message(RegistrationState.waiting_name, F.text)
+    async def name_handler(message: Message, state: FSMContext) -> None:
+        if message.from_user is None or message.text is None:
+            return
+        entered_name = message.text.strip()
+        if len(entered_name) < 2:
+            await message.answer(NAME_INVALID_TEXT)
+            return
+
+        data = await state.get_data()
+        phone = str(data.get("phone_number", "")).strip()
+        if not phone:
+            await state.set_state(RegistrationState.waiting_contact)
+            await message.answer(
+                ASK_CONTACT_TEXT,
+                reply_markup=build_contact_request_keyboard(),
+            )
+            return
+
+        item = UserRegistration(
+            user_id=message.from_user.id,
+            username=message.from_user.username or "",
+            full_name=message.from_user.full_name,
+            phone_number=phone,
+            entered_name=entered_name,
+        )
+        await save_registration(item)
+        await state.clear()
+        await message.answer(REGISTERED_TEXT, reply_markup=build_remove_keyboard())
+        await continue_after_registration(message, state)
+
     @router.message(F.text)
-    async def gate_fallback_handler(message: Message) -> None:
+    async def gate_fallback_handler(message: Message, state: FSMContext) -> None:
+        current_state = await state.get_state()
+        if current_state == RegistrationState.waiting_contact.state:
+            await message.answer(CONTACT_INVALID_TEXT, reply_markup=build_contact_request_keyboard())
+            return
+        if current_state == RegistrationState.waiting_name.state:
+            await message.answer(NAME_INVALID_TEXT)
+            return
+
         result = await check_user(message)
         if result is None:
             return

@@ -21,16 +21,16 @@ def build_app(config: Config) -> web.Application:
     webhook_path = f"/webhook/{config.webhook_secret}"
     webhook_url = f"{config.webhook_base_url}{webhook_path}"
 
-    async def on_startup(bot_instance: Bot) -> None:
-        await bot_instance.set_webhook(
+    async def on_startup() -> None:
+        await bot.set_webhook(
             webhook_url,
             allowed_updates=dispatcher.resolve_used_update_types(),
             drop_pending_updates=False,
         )
         logging.info("Webhook set to %s", webhook_url)
 
-    async def on_shutdown(bot_instance: Bot) -> None:
-        await bot_instance.delete_webhook(drop_pending_updates=False)
+    async def on_shutdown() -> None:
+        await bot.delete_webhook(drop_pending_updates=False)
         logging.info("Webhook deleted")
 
     dispatcher.startup.register(on_startup)
