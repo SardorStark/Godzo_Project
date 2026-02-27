@@ -34,6 +34,12 @@ REQUIRED_CHATS=@kanal1,@kanal2
 PORT=8080
 ```
 
+`REQUIRED_CHATS` format:
+- Public kanal: `@username` yoki `https://t.me/username`
+- Private kanal (`+invite`) uchun: `-1001234567890|https://t.me/+inviteCode`
+  - Chap tomoni tekshiruv uchun chat ID
+  - O'ng tomoni userga ko'rsatish uchun invite link
+
 ## Run
 
 ```bash
@@ -53,3 +59,4 @@ python main.py
 1. Obuna bolmagan account bilan `/start` bosing: kanal tugmalari chiqishi kerak.
 2. Kanallarga obuna bolib `Tekshirish` ni bosing.
 3. Tasdiqlangandan keyin `Obuna tasdiqlandi, xush kelibsiz!` chiqishi kerak.
+4. Agar user keyin obunadan chiqsa, bot `Siz obunani uchirdingiz...` degan ogohlantirish yuboradi.

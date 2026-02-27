@@ -15,6 +15,7 @@ from bot.keyboards import (
     build_remove_keyboard,
     build_subscription_keyboard,
 )
+from bot.models import RequiredChat
 from bot.storage import UserRegistration, is_registered, save_registration
 from bot.subscription import SubscriptionCheckError, is_subscribed
 
@@ -24,6 +25,9 @@ SUBSCRIPTION_REQUIRED_TEXT = (
 )
 SUBSCRIPTION_NOT_DONE_TEXT = "Hali barcha kanallarga obuna bolinmagan."
 CHECK_ERROR_TEXT = "Tekshiruvda muammo, keyinroq urinib koring."
+UNSUBSCRIBED_WARNING_TEXT = (
+    "Siz obunani uchirdingiz. Iltimos konkurs talablariga amal qiling."
+)
 DEFAULT_SUBSCRIBED_TEXT = "Siz obuna bolgansiz. Hozircha /start dan foydalaning."
 ASK_CONTACT_TEXT = "Davom etish uchun telefon raqamingizni yuboring."
 ASK_NAME_TEXT = "Endi ism-familiyangizni yozing."
@@ -31,6 +35,7 @@ CONTACT_INVALID_TEXT = "Telefon raqamni tugma orqali yuboring."
 NAME_INVALID_TEXT = "Ism juda qisqa. Qaytadan kiriting."
 REGISTERED_TEXT = "Malumot qabul qilindi."
 ALREADY_REGISTERED_TEXT = "Siz oldin malumot topshirgansiz."
+PROMO_TEXT_TEMPLATE = "Sizning promo kodingiz: {promo_code}"
 
 
 class RegistrationState(StatesGroup):
@@ -38,17 +43,24 @@ class RegistrationState(StatesGroup):
     waiting_name = State()
 
 
-def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[str]) -> None:
+def build_promo_code(user_id: int) -> str:
+    return f"GODZO{user_id % 1_000_000:06d}"
+
+
+def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[RequiredChat]) -> None:
     chats = tuple(required_chats)
     router = Router()
+    warned_users: set[int] = set()
 
-    async def send_subscription_prompt(message: Message, missing_chats: Sequence[str]) -> None:
+    async def send_subscription_prompt(
+        message: Message, missing_chats: Sequence[RequiredChat]
+    ) -> None:
         await message.answer(
             SUBSCRIPTION_REQUIRED_TEXT,
             reply_markup=build_subscription_keyboard(missing_chats),
         )
 
-    async def check_user(message: Message) -> tuple[bool, list[str]] | None:
+    async def check_user(message: Message) -> tuple[bool, list[RequiredChat]] | None:
         if message.from_user is None:
             return None
 
@@ -69,10 +81,21 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[str]) -> Non
 
         is_user_subscribed, missing_chats = result
         if is_user_subscribed:
+            warned_users.discard(message.from_user.id if message.from_user else -1)
             await state.clear()
             await message.answer(WELCOME_TEXT, reply_markup=build_remove_keyboard())
+            if message.from_user is not None:
+                await message.answer(
+                    PROMO_TEXT_TEMPLATE.format(
+                        promo_code=build_promo_code(message.from_user.id)
+                    )
+                )
             return
 
+        if message.from_user and await is_registered(message.from_user.id):
+            if message.from_user.id not in warned_users:
+                warned_users.add(message.from_user.id)
+                await message.answer(UNSUBSCRIBED_WARNING_TEXT)
         await send_subscription_prompt(message, missing_chats)
 
     @router.message(CommandStart())
@@ -108,10 +131,21 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[str]) -> Non
             return
 
         if is_user_subscribed:
+            warned_users.discard(callback.from_user.id)
             await callback.message.edit_text(WELCOME_TEXT)
+            await callback.message.answer(
+                PROMO_TEXT_TEMPLATE.format(
+                    promo_code=build_promo_code(callback.from_user.id)
+                ),
+                reply_markup=build_remove_keyboard(),
+            )
             await callback.answer("Tasdiqlandi")
             return
 
+        if await is_registered(callback.from_user.id):
+            if callback.from_user.id not in warned_users:
+                warned_users.add(callback.from_user.id)
+                await callback.message.answer(UNSUBSCRIBED_WARNING_TEXT)
         await callback.message.edit_text(
             SUBSCRIPTION_REQUIRED_TEXT,
             reply_markup=build_subscription_keyboard(missing_chats),
@@ -177,9 +211,20 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[str]) -> Non
 
         is_user_subscribed, missing_chats = result
         if is_user_subscribed:
+            warned_users.discard(message.from_user.id if message.from_user else -1)
             await message.answer(DEFAULT_SUBSCRIBED_TEXT)
+            if message.from_user is not None:
+                await message.answer(
+                    PROMO_TEXT_TEMPLATE.format(
+                        promo_code=build_promo_code(message.from_user.id)
+                    )
+                )
             return
 
+        if message.from_user and await is_registered(message.from_user.id):
+            if message.from_user.id not in warned_users:
+                warned_users.add(message.from_user.id)
+                await message.answer(UNSUBSCRIBED_WARNING_TEXT)
         await send_subscription_prompt(message, missing_chats)
 
     dispatcher.include_router(router)

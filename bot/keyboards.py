@@ -12,14 +12,16 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
+from bot.models import RequiredChat
 
-def build_subscription_keyboard(chats: Sequence[str]) -> InlineKeyboardMarkup:
+
+def build_subscription_keyboard(chats: Sequence[RequiredChat]) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
 
     for chat in chats:
         builder.button(
-            text=f"Obuna bolish: {chat}",
-            url=f"https://t.me/{chat.lstrip('@')}",
+            text=f"Obuna bolish: {chat.label}",
+            url=chat.join_url,
         )
 
     builder.button(text="Tekshirish", callback_data="check_subs")
