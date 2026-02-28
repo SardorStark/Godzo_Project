@@ -1,12 +1,16 @@
 # Godzo Project
 
-Majburiy obuna tekshiruvi bor Telegram bot (aiogram 3 + webhook).
+Majburiy obuna tekshiruvi, ro'yxatdan o'tish va referral tizimiga ega Telegram bot (aiogram 3 + webhook).
 
 ## Features
 
 - `/start` da obuna tekshiruvi.
 - Obuna bolmagan user uchun kanal tugmalari va `Tekshirish` callback.
 - Qattiq gate: obuna bolmagan user oddiy xabarda ham bloklanadi.
+- Kanal tugmalari 2 ustunda chiqadi (masalan 10 kanal = 5 qator, 2 ustun).
+- Har userga ketma-ket konkurs raqami beriladi (`1..1000000`).
+- Har userga referral link beriladi (`/start ref_<user_id>`).
+- 5 ta odam taklif qilganda referral talabi bajarilgan deb belgilanadi.
 - `GET /health` endpoint.
 - `POST /webhook/{WEBHOOK_SECRET}` endpoint.
 

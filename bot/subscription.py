@@ -18,6 +18,10 @@ UNSUBSCRIBED_STATUSES = {"left", "kicked", "restricted"}
 class SubscriptionCheckError(Exception):
     """Raised when Telegram membership check fails unexpectedly."""
 
+    def __init__(self, user_message: str) -> None:
+        super().__init__(user_message)
+        self.user_message = user_message
+
 
 def is_member_status_subscribed(status: str) -> bool:
     if status in SUBSCRIBED_STATUSES:
@@ -41,7 +45,15 @@ async def is_subscribed(
                 user_id,
                 chat.check_chat_id,
             )
-            raise SubscriptionCheckError("Membership check failed") from exc
+            error_text = str(exc).lower()
+            if "member list is inaccessible" in error_text:
+                raise SubscriptionCheckError(
+                    f"Obuna tekshiruv xatosi: {chat.label} kanalida bot admin emas "
+                    "yoki a'zolar ro'yxati yopiq."
+                ) from exc
+            raise SubscriptionCheckError(
+                f"Obuna tekshiruv xatosi: {chat.label} kanalini tekshirib bo'lmadi."
+            ) from exc
 
         status = getattr(member.status, "value", str(member.status))
         if not is_member_status_subscribed(status):
