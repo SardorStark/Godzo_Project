@@ -116,6 +116,7 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[RequiredChat
     chats = tuple(required_chats)
     router = Router()
     warned_users: set[int] = set()
+    confirmed_subscribers: set[int] = set()
 
     async def send_subscription_prompt(
         message: Message, missing_chats: Sequence[RequiredChat]
@@ -152,6 +153,8 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[RequiredChat
 
         is_user_subscribed, missing_chats = result
         if is_user_subscribed:
+            if message.from_user is not None:
+                confirmed_subscribers.add(message.from_user.id)
             warned_users.discard(message.from_user.id if message.from_user else -1)
             await state.clear()
             if message.from_user is not None:
@@ -159,7 +162,10 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[RequiredChat
             return
 
         if message.from_user and await is_registered(message.from_user.id):
-            if message.from_user.id not in warned_users:
+            if (
+                message.from_user.id in confirmed_subscribers
+                and message.from_user.id not in warned_users
+            ):
                 warned_users.add(message.from_user.id)
                 await message.answer(UNSUBSCRIBED_WARNING_TEXT)
         await send_subscription_prompt(message, missing_chats)
@@ -213,6 +219,7 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[RequiredChat
                 )
                 await callback.answer("Avval ro'yxatdan o'ting")
                 return
+            confirmed_subscribers.add(callback.from_user.id)
             warned_users.discard(callback.from_user.id)
             await callback.message.edit_text("✅ Tasdiqlandi!")
             await send_after_subscribed_bundle(callback.message, callback.from_user.id)
@@ -220,7 +227,10 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[RequiredChat
             return
 
         if await is_registered(callback.from_user.id):
-            if callback.from_user.id not in warned_users:
+            if (
+                callback.from_user.id in confirmed_subscribers
+                and callback.from_user.id not in warned_users
+            ):
                 warned_users.add(callback.from_user.id)
                 await callback.message.answer(UNSUBSCRIBED_WARNING_TEXT)
         await callback.message.edit_text(
@@ -323,12 +333,17 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[RequiredChat
 
         is_user_subscribed, missing_chats = result
         if is_user_subscribed:
+            if message.from_user is not None:
+                confirmed_subscribers.add(message.from_user.id)
             warned_users.discard(message.from_user.id if message.from_user else -1)
             await message.answer("⚠️ Konkurs qayta boshlandi!\n\nQayta ishtirok etish uchun bosing! /start")
             return
 
         if message.from_user and await is_registered(message.from_user.id):
-            if message.from_user.id not in warned_users:
+            if (
+                message.from_user.id in confirmed_subscribers
+                and message.from_user.id not in warned_users
+            ):
                 warned_users.add(message.from_user.id)
                 await message.answer(UNSUBSCRIBED_WARNING_TEXT)
         await send_subscription_prompt(message, missing_chats)
