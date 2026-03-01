@@ -205,6 +205,14 @@ def setup_handlers(dispatcher: Dispatcher, required_chats: Sequence[RequiredChat
             return
 
         if is_user_subscribed:
+            if not await is_registered(callback.from_user.id):
+                warned_users.discard(callback.from_user.id)
+                await callback.message.edit_text("✅ Obuna tasdiqlandi!")
+                await callback.message.answer(
+                    "❗ Raqam olish uchun avval ro'yxatdan o'ting: /start"
+                )
+                await callback.answer("Avval ro'yxatdan o'ting")
+                return
             warned_users.discard(callback.from_user.id)
             await callback.message.edit_text("✅ Tasdiqlandi!")
             await send_after_subscribed_bundle(callback.message, callback.from_user.id)
